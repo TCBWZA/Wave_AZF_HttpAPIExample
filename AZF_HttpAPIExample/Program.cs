@@ -55,15 +55,20 @@ builder.Services
  * - Support named/typed clients
  * - Allow for configuration and policies (retry, timeout, etc.)
  * 
- * Uncomment the following to use IHttpClientFactory:
+ * This example reads the API base URL from configuration:
+ * - Local: local.settings.json -> "Values": { "ApiBaseUrl": "http://localhost:7122/api" }
+ * - Azure: Configuration > Application Settings > ApiBaseUrl
  */
+
+// Read API base URL from configuration
+// Falls back to a default URL if not configured
+var apiBaseUrl = builder.Configuration["ApiBaseUrl"] ?? "http://localhost:7122/api";
 
 // Register HttpClient for calling external APIs
 builder.Services.AddHttpClient("OrdersAPI", client =>
 {
-    // Configure base address for your API
-    // TODO: Replace with your actual API URL
-    client.BaseAddress = new Uri("https://your-api-url.com/");
+    // Configure base address from configuration
+    client.BaseAddress = new Uri(apiBaseUrl);
     
     // Set default request headers
     client.DefaultRequestHeaders.Add("Accept", "application/json");
@@ -109,7 +114,7 @@ builder.Build().Run();
  *      "Values": {
  *        "AzureWebJobsStorage": "UseDevelopmentStorage=true",
  *        "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated",
- *        "ApiBaseUrl": "https://your-api.com",
+ *        "ApiBaseUrl": "http://localhost:7122",
  *        "ApiKey": "your-secret-key"
  *      }
  *    }

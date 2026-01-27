@@ -215,34 +215,38 @@ public class OrdersFunction
    cd AZF_HttpAPIExample
    ```
 
-2. **Update the API URL**
+2. **Configure the API URL**
    
-   In `OrdersFunction.cs`, change:
-   ```csharp
-   private const string API_BASE_URL = "https://your-api-url.com/api";
-   ```
+> ⚠️ **IMPORTANT - Security Notice**: 
+> The `local.settings.json` file contains configuration settings and may include sensitive information (API keys, connection strings, etc.). This file is **excluded from Git** (via `.gitignore`) and should **never be committed to your repository**.
    
-   To your actual API URL.
+If `local.settings.json` doesn't exist, you may need to:
+- **Rename** `local.settings.json.sample` to `local.settings.json` (if a sample file is provided)
+- **Create** a new `local.settings.json` file with the following content:
+   
+```json
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated",
+    "ApiBaseUrl": "http://localhost:5143/api"
+  }
+}
+```
+   
+Replace `http://localhost:5143/api` with your actual API URL.
+   
+> 💡 **Best Practice**: Share a `local.settings.json.sample` file in your repository with placeholder values, not the actual `local.settings.json` file.
 
-3. **Create local.settings.json** (if not exists)
-   ```json
-   {
-     "IsEncrypted": false,
-     "Values": {
-       "AzureWebJobsStorage": "UseDevelopmentStorage=true",
-       "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated"
-     }
-   }
-   ```
-
-4. **Restore NuGet packages** (first time only)
+3. **Restore NuGet packages** (first time only)
    ```powershell
    dotnet restore
    ```
    
    > **Corporate Environment Note**: This project includes Newtonsoft.Json 13.0.4 explicitly to ensure compatibility with corporate security policies. If you encounter package restore issues, check with your IT department about approved package sources.
 
-5. **Run the project**
+4. **Run the project**
    
 In Visual Studio: Press **F5**
    
@@ -251,7 +255,7 @@ Or in PowerShell/Command Prompt:
 func start
 ```
 
-6. **Test the endpoints**
+5. **Test the endpoints**
    
    The functions will be available at:
    - `http://localhost:7071/api/orders` (GET - all orders)
@@ -260,7 +264,25 @@ func start
 
 ## 📝 Important Code Patterns
 
-### 1. Reading JSON Request Body
+### 1. Reading Configuration Settings
+
+```csharp
+// In constructor - inject IConfiguration
+public OrdersFunction(ILogger<OrdersFunction> logger, IConfiguration configuration)
+{
+    _logger = logger;
+    _configuration = configuration;
+    
+    // Read API base URL from configuration
+    _apiBaseUrl = _configuration["ApiBaseUrl"] ?? "http://localhost:5143/api";
+}
+
+// Configuration comes from:
+// - Local: local.settings.json -> "Values": { "ApiBaseUrl": "..." }
+// - Azure: Configuration > Application Settings > ApiBaseUrl
+```
+
+### 2. Reading JSON Request Body
 
 ```csharp
 // Azure Functions way
@@ -271,7 +293,7 @@ string body = await new StreamReader(req.Body).ReadToEndAsync();
 var data = JsonSerializer.Deserialize<CreateOrderDto>(body);
 ```
 
-### 2. Calling External API with GET
+### 3. Calling External API with GET
 
 ```csharp
 // Simple way
@@ -287,7 +309,7 @@ if (response.IsSuccessStatusCode)
 }
 ```
 
-### 3. Calling External API with POST
+### 4. Calling External API with POST
 
 ```csharp
 // Serialize your object
@@ -300,7 +322,7 @@ var content = new StringContent(json, Encoding.UTF8, "application/json");
 HttpResponseMessage response = await _httpClient.PostAsync(url, content);
 ```
 
-### 4. Returning Different Status Codes
+### 5. Returning Different Status Codes
 
 ```csharp
 // 200 OK
@@ -396,6 +418,28 @@ return new StatusCodeResult(StatusCodes.Status500InternalServerError);
 ---
 
 **Good luck with your assignment! Remember to read the comments in the code - they explain everything step by step.** 🚀
+
+## 🔒 Security Notes
+
+### local.settings.json
+
+- ✅ **This file is in `.gitignore`** - It will NOT be committed to Git
+- ⚠️ **Never commit this file** - It may contain sensitive information
+- 📋 **Share a sample file instead** - Create `local.settings.json.sample` with placeholder values
+- 🔑 **Contains secrets** - API keys, connection strings, configuration values
+
+**Example of safe sharing:**
+```
+# ✅ Commit this: local.settings.json.sample
+{
+  "Values": {
+    "ApiBaseUrl": "YOUR_API_URL_HERE",
+    "ApiKey": "YOUR_API_KEY_HERE"
+  }
+}
+
+# ❌ DON'T commit: local.settings.json (actual file with real values)
+```
 
 ## 📝 Note About Build Output
 
