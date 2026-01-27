@@ -1,0 +1,33 @@
+{
+  "supplierId": 1,
+  "customerId": 100,
+  "customerEmail": "student@example.com",
+  "orderDate": "2024-01-15T10:30:00Z",
+  "orderStatus": 0,
+  "billingAddress": {
+    "street": "123 Main Street",
+    "city": "Dublin",
+    "county": "Dublin",
+    "postalCode": "D01 F5P2",
+    "country": "Ireland"
+  },
+  "deliveryAddress": {
+    "street": "456 College Road",
+    "city": "Cork",
+    "county": "Cork",
+    "postalCode": "T12 X8HY",
+    "country": "Ireland"
+  },
+  "orderItems": [
+    {
+      "productId": 5,
+      "quantity": 2,
+      "price": 29.99
+    },
+    {
+      "productId": 8,
+      "quantity": 1,
+      "price": 49.99
+    }
+  ]
+}
