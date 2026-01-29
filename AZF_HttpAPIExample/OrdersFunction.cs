@@ -1,10 +1,18 @@
 using Microsoft.AspNetCore.Http;
+using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
 using AZF_HttpAPIExample.Models;
+using AZF_HttpAPIExample.Extensions;
+using NeoWarewholesale.API.DTOs;
+using NeoWarewholesale.API.DTOs.External;
+using NeoWarewholesale.API.Models;
+using NeoWarewholesale.API.Validators;
+
+
 
 /*
  * ============================================================================
@@ -71,6 +79,66 @@ public class OrdersFunction
         _apiBaseUrl = _configuration["ApiBaseUrl"] ?? "http://localhost:5143/api";
         
         _logger.LogInformation($"API Base URL configured as: {_apiBaseUrl}");
+    }
+
+    /*
+     * ========================================================================
+     * HELPER METHOD: GET SUPPLIER NAME  BY ID
+     * ========================================================================
+     * 
+     * This method demonstrates how to call the API to get supplier information
+     * Used for enriching order data with supplier names
+     */
+    private async Task<string> GetSupplierNameAsync(long supplierId)
+    {
+        try
+        {
+            string apiUrl = $"{_apiBaseUrl}/suppliers/{supplierId}";
+            _logger.LogInformation($"Getting supplier name for ID: {supplierId}");
+
+            string jsonResponse = await _httpClient.GetStringAsync(apiUrl);
+            var supplier = JsonSerializer.Deserialize<SupplierDto>(jsonResponse, new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            });
+
+            return supplier?.Name ?? "Unknown Supplier";
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning($"Failed to get supplier name for ID {supplierId}: {ex.Message}");
+            return "Unknown Supplier";
+        }
+    }
+
+    /*
+     * ========================================================================
+     * HELPER METHOD: GET CUSTOMER ID BY EMAIL
+     * ========================================================================
+     * 
+     * This method demonstrates how to call the API to get customer information
+     * Used for enriching order data with customer IDs from email addresses
+     */
+    private async Task<long?> GetCustomerIdAsync(string email)
+    {
+        try
+        {
+            string apiUrl = $"{_apiBaseUrl}/customers/by-email/{Uri.EscapeDataString(email)}";
+            _logger.LogInformation($"Getting customer ID for email: {email}");
+
+            string jsonResponse = await _httpClient.GetStringAsync(apiUrl);
+            var customer = JsonSerializer.Deserialize<CustomerDto>(jsonResponse, new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            });
+
+            return customer?.Id;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning($"Failed to get customer ID for email {email}: {ex.Message}");
+            return null;
+        }
     }
 
     /*
@@ -362,6 +430,304 @@ public class OrdersFunction
         {
             _logger.LogError($"Unexpected error: {ex.Message}");
             return new StatusCodeResult(StatusCodes.Status500InternalServerError);
+        }
+    }
+
+    /*
+     * ========================================================================
+     * FUNCTION 4: CREATE SPEEDY ORDER (POST)
+     * ========================================================================
+     * 
+     * HTTP Trigger: POST request
+     * Route: /api/speedy-orders
+     * Authorization: Function level
+     * 
+     * PURPOSE:
+     * This function demonstrates how to:
+     * 1. Accept SpeedyOrderDto (external supplier format)
+     * 2. Map external format to internal CreateOrderDto using extension methods
+     * 3. Enrich data by looking up supplier information from API
+     * 4. Create order using the standard API
+     * 5. Return created resource with 201 status code
+     * 
+     * KEY CONCEPTS:
+     * - External API integration with different data formats
+     * - Data transformation and enrichment
+     * - Extension methods for clean mapping code
+     * - Helper methods for API calls
+     * 
+     * EXAMPLE REQUEST BODY (Speedy format):
+     * {
+     *   "customerId": 123,
+     *   "orderTimestamp": "2024-01-15T10:30:00Z",
+     *   "shipTo": {
+     *     "streetAddress": "123 Main St",
+     *     "city": "Anytown",
+     *     "region": "Anycounty",
+     *     "postCode": "12345",
+     *     "country": "USA"
+     *   },
+     *   "lineItems": [
+     *     {
+     *       "productId": 456,
+     *       "qty": 2,
+     *       "unitPrice": 29.99
+     *     }
+     *   ],
+     *   "priority": "express"
+     * }
+     */
+    [Function("CreateSpeedyOrder")]
+    public async Task<IActionResult> CreateSpeedyOrder(
+        [HttpTrigger(AuthorizationLevel.Function, "post", Route = "speedy-orders")] HttpRequest req)
+    {
+        _logger.LogInformation("CreateSpeedyOrder function triggered.");
+
+        try
+        {
+            // STEP 1: Read and deserialize the Speedy order
+            var speedyOrder = await req.ReadFromJsonAsync<SpeedyOrderDto>();
+
+            // STEP 2: Validate the input
+            if (speedyOrder == null)
+            {
+                _logger.LogWarning("Request body is empty or invalid.");
+                return new BadRequestObjectResult(new { message = "Request body is required." });
+            }
+
+            if (speedyOrder.CustomerId <= 0)
+            {
+                return new BadRequestObjectResult(new { message = "Invalid CustomerId." });
+            }
+
+            if (speedyOrder.LineItems == null || !speedyOrder.LineItems.Any())
+            {
+                return new BadRequestObjectResult(new { message = "Order must contain at least one item." });
+            }
+
+            // STEP 3: Get supplier name for enrichment (Speedy is supplier ID 1)
+            string supplierName = await GetSupplierNameAsync(1);
+            _logger.LogInformation($"Using supplier: {supplierName}");
+
+            // STEP 4: Map SpeedyOrderDto to CreateOrderDto using extension method
+            var createOrder = speedyOrder.ToCreateOrderDto(supplierName);
+
+            // STEP 5: Serialize to JSON for sending to API
+            string jsonContent = JsonSerializer.Serialize(createOrder, new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                WriteIndented = false
+            });
+
+            _logger.LogInformation($"Sending Speedy order to API: {jsonContent}");
+
+            // STEP 6: Create HTTP content and send POST request
+            var httpContent = new StringContent(
+                jsonContent,
+                System.Text.Encoding.UTF8,
+                "application/json");
+
+            string apiUrl = $"{_apiBaseUrl}/orders";
+            HttpResponseMessage response = await _httpClient.PostAsync(apiUrl, httpContent);
+
+            // STEP 7: Check API response
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogError($"API returned error: {response.StatusCode}");
+                string errorContent = await response.Content.ReadAsStringAsync();
+                return new ObjectResult(new { message = "Failed to create Speedy order.", details = errorContent })
+                {
+                    StatusCode = (int)response.StatusCode
+                };
+            }
+
+            // STEP 8: Read and return the created order
+            string responseJson = await response.Content.ReadAsStringAsync();
+            var createdOrder = JsonSerializer.Deserialize<OrderDto>(responseJson, new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            });
+
+            _logger.LogInformation($"Successfully created Speedy order with ID: {createdOrder?.Id}");
+
+            return new CreatedResult($"/api/orders/{createdOrder?.Id}", createdOrder);
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogError($"Error with JSON processing: {ex.Message}");
+            return new BadRequestObjectResult(new { message = "Invalid JSON format.", error = ex.Message });
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogError($"Error calling external API: {ex.Message}");
+            return new StatusCodeResult(StatusCodes.Status503ServiceUnavailable);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError($"Unexpected error: {ex.Message}");
+            return new StatusCodeResult(StatusCodes.Status500InternalServerError);
+        }
+    }
+
+    /*
+     * ========================================================================
+     * FUNCTION 5: CREATE VAULT ORDER (POST)
+     * ========================================================================
+     * 
+     * HTTP Trigger: POST request
+     * Route: /api/vault-orders
+     * Authorization: Function level
+     * 
+     * PURPOSE:
+     * This function demonstrates how to:
+     * 1. Accept VaultOrderDto (external supplier format)
+     * 2. Map external format to internal CreateOrderDto using extension methods
+     * 3. Enrich data by looking up customer ID from email address
+     * 4. Create order using the standard API
+     * 5. Return HttpResponseData with proper status codes
+     * 
+     * KEY CONCEPTS:
+     * - External API integration with different data formats
+     * - Data transformation and enrichment using email lookup
+     * - Extension methods for clean mapping code
+     * - Helper methods for API calls
+     * - HttpResponseData for fine-grained response control
+     * 
+     * EXAMPLE REQUEST BODY (Vault format):
+     * {
+     *   "customerEmail": "customer@vault-supplier.com",
+     *   "placedAt": 1700000000,
+     *   "deliveryDetails": {
+     *     "billingLocation": {
+     *       "addressLine": "123 Main St",
+     *       "cityName": "Anytown",
+     *       "stateProvince": "Anycounty",
+     *       "zipPostal": "12345",
+     *       "countryCode": "USA"
+     *     }
+     *   },
+     *   "items": [
+     *     {
+     *       "productCode": "550e8400-e29b-41d4-a716-446655440000",
+     *       "quantityOrdered": 2,
+     *       "pricePerUnit": 29.99
+     *     }
+     *   ],
+     *   "fulfillmentInstructions": "Handle with care"
+     * }
+     */
+    [Function("CreateVaultOrder")]
+    public async Task<HttpResponseData> CreateVaultOrder(
+        [HttpTrigger(AuthorizationLevel.Function, "post", Route = "vault-orders")] HttpRequestData req)
+    {
+        _logger.LogInformation("CreateVaultOrder function triggered.");
+
+        var response = req.CreateResponse();
+
+        try
+        {
+            // STEP 1: Read and deserialize the Vault order
+            var vaultOrder = await req.ReadFromJsonAsync<VaultOrderDto>();
+
+            // STEP 2: Validate the inputs
+            if (vaultOrder == null)
+            {
+                _logger.LogWarning("Request body is empty or invalid.");
+                await response.WriteAsJsonAsync(new { message = "Request body is required." });
+                response.StatusCode = System.Net.HttpStatusCode.BadRequest;
+                return response;
+            }
+
+            if (string.IsNullOrWhiteSpace(vaultOrder.CustomerEmail))
+            {
+                await response.WriteAsJsonAsync(new { message = "CustomerEmail is required." });
+                response.StatusCode = System.Net.HttpStatusCode.BadRequest;
+                return response;
+            }
+
+            if (vaultOrder.Items == null || !vaultOrder.Items.Any())
+            {
+                await response.WriteAsJsonAsync(new { message = "Order must contain at least one item." });
+                response.StatusCode = System.Net.HttpStatusCode.BadRequest;
+                return response;
+            }
+
+            // STEP 3: Get customer ID from email address
+            long? customerId = await GetCustomerIdAsync(vaultOrder.CustomerEmail);
+            if (!customerId.HasValue)
+            {
+                _logger.LogWarning($"Customer not found for email: {vaultOrder.CustomerEmail}");
+                await response.WriteAsJsonAsync(new { message = $"Customer not found for email: {vaultOrder.CustomerEmail}" });
+                response.StatusCode = System.Net.HttpStatusCode.BadRequest;
+                return response;
+            }
+
+            _logger.LogInformation($"Found customer ID {customerId} for email {vaultOrder.CustomerEmail}");
+
+            // STEP 4: Map VaultOrderDto to CreateOrderDto using extension method
+            var createOrder = vaultOrder.ToCreateOrderDto(customerId.Value);
+
+            // STEP 5: Serialize to JSON for sending to API
+            string jsonContent = JsonSerializer.Serialize(createOrder, new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                WriteIndented = false
+            });
+
+            _logger.LogInformation($"Sending Vault order to API: {jsonContent}");
+
+            // STEP 6: Create HTTP content and send POST request
+            var httpContent = new StringContent(
+                jsonContent,
+                System.Text.Encoding.UTF8,
+                "application/json");
+
+            string apiUrl = $"{_apiBaseUrl}/orders";
+            HttpResponseMessage apiResponse = await _httpClient.PostAsync(apiUrl, httpContent);
+
+            // STEP 7: Check API response
+            if (!apiResponse.IsSuccessStatusCode)
+            {
+                _logger.LogError($"API returned error: {apiResponse.StatusCode}");
+                string errorContent = await apiResponse.Content.ReadAsStringAsync();
+                await response.WriteAsJsonAsync(new { message = "Failed to create Vault order.", details = errorContent });
+                response.StatusCode = apiResponse.StatusCode;
+                return response;
+            }
+
+            // STEP 8: Read and return the created order
+            string responseJson = await apiResponse.Content.ReadAsStringAsync();
+            var createdOrder = JsonSerializer.Deserialize<OrderDto>(responseJson, new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            });
+
+            _logger.LogInformation($"Successfully created Vault order with ID: {createdOrder?.Id}");
+
+            await response.WriteAsJsonAsync(createdOrder);
+            response.StatusCode = System.Net.HttpStatusCode.Created;
+            return response;
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogError($"Error with JSON processing: {ex.Message}");
+            await response.WriteAsJsonAsync(new { message = "Invalid JSON format.", error = ex.Message });
+            response.StatusCode = System.Net.HttpStatusCode.BadRequest;
+            return response;
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogError($"Error calling external API: {ex.Message}");
+            await response.WriteAsJsonAsync(new { message = "Service unavailable.", error = ex.Message });
+            response.StatusCode = System.Net.HttpStatusCode.ServiceUnavailable;
+            return response;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError($"Unexpected error: {ex.Message}");
+            await response.WriteAsJsonAsync(new { message = "Internal server error.", error = ex.Message });
+            response.StatusCode = System.Net.HttpStatusCode.InternalServerError;
+            return response;
         }
     }
 }

@@ -212,9 +212,17 @@ Invoke-RestMethod -Uri "http://localhost:7071/api/orders" -Method Get
 # GET By ID
 Invoke-RestMethod -Uri "http://localhost:7071/api/orders/123" -Method Get
 
-# POST
+# POST Standard Order
 $body = @{ supplierId = 1; orderItems = @(@{ productId = 5; quantity = 2; price = 29.99 }) } | ConvertTo-Json
 Invoke-RestMethod -Uri "http://localhost:7071/api/orders" -Method Post -Body $body -ContentType "application/json"
+
+# POST Speedy Order
+$body = @{ customerId = 123; lineItems = @(@{ productId = 5; qty = 2; unitPrice = 29.99 }) } | ConvertTo-Json
+Invoke-RestMethod -Uri "http://localhost:7071/api/speedy-orders" -Method Post -Body $body -ContentType "application/json"
+
+# POST Vault Order
+$body = @{ customerEmail = "customer@vault.com"; placedAt = 1700000000; items = @(@{ productCode = "550e8400-e29b-41d4-a716-446655440000"; quantityOrdered = 2; pricePerUnit = 29.99 }) } | ConvertTo-Json
+Invoke-RestMethod -Uri "http://localhost:7071/api/vault-orders" -Method Post -Body $body -ContentType "application/json"
 ```
 
 ---
@@ -228,6 +236,60 @@ Invoke-RestMethod -Uri "http://localhost:7071/api/orders" -Method Post -Body $bo
 | Routing | `[HttpTrigger(Route = "...")]` | `[Route("...")]` |
 | Cost | Pay per execution | Pay for uptime |
 
+## 📨 HttpResponseData vs IActionResult
+
+```csharp
+// IActionResult (automatic JSON serialization)
+[Function("CreateOrder")]
+public async Task<IActionResult> CreateOrder([HttpTrigger] HttpRequest req)
+{
+    var data = await req.ReadFromJsonAsync<OrderDto>();
+    return new OkObjectResult(data); // Automatic JSON response
+}
+
+// HttpResponseData (manual control)
+[Function("CreateVaultOrder")]
+public async Task<HttpResponseData> CreateVaultOrder([HttpTrigger] HttpRequestData req)
+{
+    var response = req.CreateResponse();
+    var data = await req.ReadFromJsonAsync<VaultOrderDto>();
+    
+    await response.WriteAsJsonAsync(data);
+    response.StatusCode = System.Net.HttpStatusCode.Created;
+    return response; // Manual JSON response
+}
+```
+
+**When to use HttpResponseData:**
+- Need fine-grained control over response
+- Custom headers, status codes, or content types
+- Streaming responses
+- Advanced response manipulation
+
+---
+
+## 🧩 Extension Methods
+
+```csharp
+// In Extensions/MappingExtensions.cs
+public static class MappingExtensions
+{
+    public static CreateOrderDto ToCreateOrderDto(this SpeedyOrderDto speedyOrder, string supplierName)
+    {
+        return new CreateOrderDto
+        {
+            SupplierId = 1, // Speedy is always supplier ID 1
+            CustomerId = speedyOrder.CustomerId,
+            OrderDate = speedyOrder.OrderTimestamp,
+            // ... map other properties
+        };
+    }
+}
+
+// Usage in function
+var createOrder = speedyOrder.ToCreateOrderDto(supplierName);
+```
+
 ---
 
 ## 🐛 Common Mistakes
@@ -237,6 +299,8 @@ Invoke-RestMethod -Uri "http://localhost:7071/api/orders" -Method Post -Body $bo
 3. ❌ Forgetting case sensitivity → Use `PropertyNameCaseInsensitive`
 4. ❌ Not handling errors → Use try-catch
 5. ❌ Missing Content-Type → Specify "application/json"
+6. ❌ **Hardcoding supplier IDs** → Use configuration or lookups
+7. ❌ **Not using extension methods** → Keep mapping logic centralized
 
 ---
 
@@ -245,4 +309,8 @@ Invoke-RestMethod -Uri "http://localhost:7071/api/orders" -Method Post -Body $bo
 1. **README.md** - Overview and setup
 2. **OrdersFunction.cs** - Complete examples with comments
 3. **JSON_AND_HTTPCLIENT_GUIDE.md** - Deep dive explanations
-4. **TESTING_GUIDE.md** - How to test
+4. **Extensions/MappingExtensions.cs** - Extension method examples
+
+---
+
+**Print this and keep it handy while coding!** 📄

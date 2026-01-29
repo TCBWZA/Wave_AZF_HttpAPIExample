@@ -11,11 +11,13 @@ This project provides an example of Azure Functions with HTTP triggers that comm
 ### Core Application Files
 
 1. **OrdersFunction.cs** ⭐ MAIN FILE
-   - Contains 3 complete function examples
-   - Demonstrates GET all orders, GET by ID, and POST create order
+   - Contains 5 complete function examples
+   - Demonstrates GET all orders, GET by ID, POST create order, POST Speedy order, and POST Vault order
    - Extensively commented with explanations
    - Shows proper error handling and logging
    - Explains JSON serialization differences
+   - Includes extension methods for mapping
+   - Helper methods for API calls
 
 2. **Program.cs**
    - Application startup and configuration
@@ -106,6 +108,26 @@ This project provides an example of Azure Functions with HTTP triggers that comm
   - 201 Created responses
   - Complex request/response handling
 
+### Function 4: CreateSpeedyOrder
+- **Trigger**: HTTP POST
+- **Route**: `/api/speedy-orders`
+- **Purpose**: Create order from Speedy supplier format
+- **Demonstrates**:
+  - External supplier integration
+  - Data transformation using extension methods
+  - API enrichment (supplier lookup)
+  - Helper methods for code legibility
+
+### Function 5: CreateVaultOrder
+- **Trigger**: HTTP POST
+- **Route**: `/api/vault-orders`
+- **Purpose**: Create order from Vault supplier format
+- **Demonstrates**:
+  - External supplier integration with email-based lookup
+  - Data transformation using extension methods
+  - API enrichment (customer ID lookup from email)
+  - HttpResponseData for fine-grained response control
+
 ---
 
 ## 🔑 Key Learning Points
@@ -180,32 +202,29 @@ Use this to verify you understand everything:
 - [ ] Know how to read JSON from request body in Azure Functions
 - [ ] Can use HttpClient to call external APIs
 - [ ] Understand JSON serialization and deserialization
-- [ ] Know why creating new HttpClient per request is bad
+- [ ] Know why creating a new HttpClient per request is bad
 - [ ] Can handle different HTTP status codes
 - [ ] Can implement error handling with try-catch
 - [ ] Understand route parameters
 - [ ] Can test functions using multiple methods
+- [ ] **Understand extension methods for mapping**
+- [ ] **Can integrate with external supplier formats**
+- [ ] **Know how to enrich data using API lookups**
+- [ ] **Can use HttpResponseData for response control**
 
----
+## 🎯 Success Criteria
 
-## 📚 Documentation Structure
+You'll know you understand the material when you can:
 
-```
-📁 AZF_HttpAPIExample/
-│
-├── 📖 README.md                          ← Start here (overview, setup)
-├── 📚 JSON_AND_HTTPCLIENT_GUIDE.md      ← Deep dive (concepts)
-├── 📋 QUICK_REFERENCE.md                ← One-page cheat sheet
-├── 📝 PROJECT_SUMMARY.md                ← This file (summary)
-│
-├── ⚙️ OrdersFunction.cs                  ← MAIN CODE (3 functions)
-├── ⚙️ Program.cs                         ← Startup config
-│
-├── 📦 Models/
-│   ├── OrderDto.cs                      ← Data models
-│   └── OrderStatus.cs                   ← Enum
-│
-└── 📋 SampleRequests/
-    └── create-order-sample.json         ← Test data
-```
+1. ✅ Create a new Azure Function from scratch
+2. ✅ Call an external API and handle the response
+3. ✅ Deserialize JSON into C# objects
+4. ✅ Serialize C# objects to JSON
+5. ✅ Handle errors appropriately
+6. ✅ Explain the differences from Traditional APIs
+7. ✅ Test your functions using PowerShell or Postman
+8. ✅ **Use extension methods for data mapping**
+9. ✅ **Integrate with external supplier formats**
+10. ✅ **Enrich data using API lookups**
+11. ✅ **Use HttpResponseData for response control**
 
