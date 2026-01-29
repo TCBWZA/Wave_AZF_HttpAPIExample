@@ -398,7 +398,7 @@ public class OrdersFunction
                 return new BadRequestObjectResult(new { message = "Invalid SupplierId." });
             }
 
-            if (newOrder.OrderItems == null || !newOrder.OrderItems.Any())
+            if (newOrder.OrderItems == null || newOrder.OrderItems.Count == 0)
             {
                 return new BadRequestObjectResult(new { message = "Order must contain at least one item." });
             }
@@ -530,7 +530,7 @@ public class OrdersFunction
                 return new BadRequestObjectResult(new { message = "Invalid CustomerId." });
             }
 
-            if (speedyOrder.LineItems == null || !speedyOrder.LineItems.Any())
+            if (speedyOrder.LineItems == null || speedyOrder.LineItems.Count == 0)
             {
                 return new BadRequestObjectResult(new { message = "Order must contain at least one item." });
             }
@@ -675,7 +675,7 @@ public class OrdersFunction
                 return response;
             }
 
-            if (vaultOrder.Items == null || !vaultOrder.Items.Any())
+            if (vaultOrder.Items == null || vaultOrder.Items.Count == 0)
             {
                 await response.WriteAsJsonAsync(new { message = "Order must contain at least one item." });
                 response.StatusCode = System.Net.HttpStatusCode.BadRequest;
