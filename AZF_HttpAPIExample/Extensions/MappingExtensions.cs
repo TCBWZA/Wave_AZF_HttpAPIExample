@@ -52,11 +52,13 @@ namespace AZF_HttpAPIExample.Extensions
 
         /// <summary>
         /// Maps a VaultOrderDto to a CreateOrderDto for internal processing
+        /// Note: Product IDs should be looked up separately before calling this method
         /// </summary>
         /// <param name="vaultOrder">The Vault order to map</param>
         /// <param name="customerId">The customer ID looked up from email</param>
+        /// <param name="orderItems">The order items with resolved product IDs</param>
         /// <returns>A CreateOrderDto ready for internal processing</returns>
-        public static CreateOrderDto ToCreateOrderDto(this VaultOrderDto vaultOrder, long customerId)
+        public static CreateOrderDto ToCreateOrderDto(this VaultOrderDto vaultOrder, long customerId, List<CreateOrderItemDto> orderItems)
         {
             // Convert Unix timestamp to DateTime
             var orderDate = DateTimeOffset.FromUnixTimeSeconds(vaultOrder.PlacedAt).UtcDateTime;
@@ -70,12 +72,7 @@ namespace AZF_HttpAPIExample.Extensions
                 BillingAddress = vaultOrder.DeliveryDetails?.BillingLocation?.ToAddressDto(),
                 DeliveryAddress = vaultOrder.DeliveryDetails?.ShippingLocation?.ToAddressDto(),
                 OrderStatus = OrderStatus.Received,
-                OrderItems = vaultOrder.Items.Select(item => new CreateOrderItemDto
-                {
-                    ProductId = 1, // TODO: Would need to lookup ProductId from ProductCode GUID
-                    Quantity = item.QuantityOrdered,
-                    Price = item.PricePerUnit
-                }).ToList()
+                OrderItems = orderItems
             };
         }
 

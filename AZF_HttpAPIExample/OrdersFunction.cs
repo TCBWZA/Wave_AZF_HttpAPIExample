@@ -143,6 +143,36 @@ public class OrdersFunction
 
     /*
      * ========================================================================
+     * HELPER METHOD: GET PRODUCT ID BY PRODUCT CODE
+     * ========================================================================
+     * 
+     * This method demonstrates how to call the API to get product information
+     * Used for enriching order data with product IDs from product codes
+     */
+    private async Task<long?> GetProductIdAsync(Guid productCode)
+    {
+        try
+        {
+            string apiUrl = $"{_apiBaseUrl}/products/by-code/{productCode}";
+            _logger.LogInformation($"Getting product ID for code: {productCode}");
+
+            string jsonResponse = await _httpClient.GetStringAsync(apiUrl);
+            var product = JsonSerializer.Deserialize<ProductDto>(jsonResponse, new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            });
+
+            return product?.Id;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning($"Failed to get product ID for code {productCode}: {ex.Message}");
+            return null;
+        }
+    }
+
+    /*
+     * ========================================================================
      * FUNCTION 1: GET ALL ORDERS
      * ========================================================================
      * 
@@ -155,7 +185,8 @@ public class OrdersFunction
      * 1. Accept an HTTP GET request
      * 2. Call an external API using HttpClient
      * 3. Deserialize JSON response from the API
-     * 4. Return the data to the caller
+     * 4. Process query parameters and route data
+     * 5. Return the data to the caller
      * 
      * FLOW:
      * Client ? Azure Function ? External API ? Azure Function ? Client
@@ -348,7 +379,6 @@ public class OrdersFunction
         [HttpTrigger(AuthorizationLevel.Function, "post", Route = "orders")] HttpRequest req)
     {
         _logger.LogInformation("CreateOrder function triggered.");
-
         try
         {
             // STEP 1: Read and deserialize the request body
@@ -665,7 +695,29 @@ public class OrdersFunction
             _logger.LogInformation($"Found customer ID {customerId} for email {vaultOrder.CustomerEmail}");
 
             // STEP 4: Map VaultOrderDto to CreateOrderDto using extension method
-            var createOrder = vaultOrder.ToCreateOrderDto(customerId.Value);
+            // First, we need to lookup product IDs for each item
+            var createOrderItems = new List<CreateOrderItemDto>();
+            
+            foreach (var item in vaultOrder.Items)
+            {
+                long? productId = await GetProductIdAsync(item.ProductCode);
+                if (!productId.HasValue)
+                {
+                    _logger.LogWarning($"Product not found for code: {item.ProductCode}");
+                    await response.WriteAsJsonAsync(new { message = $"Product not found for code: {item.ProductCode}" });
+                    response.StatusCode = System.Net.HttpStatusCode.BadRequest;
+                    return response;
+                }
+                
+                createOrderItems.Add(new CreateOrderItemDto
+                {
+                    ProductId = productId.Value,
+                    Quantity = item.QuantityOrdered,
+                    Price = item.PricePerUnit
+                });
+            }
+
+            var createOrder = vaultOrder.ToCreateOrderDto(customerId.Value, createOrderItems);
 
             // STEP 5: Serialize to JSON for sending to API
             string jsonContent = JsonSerializer.Serialize(createOrder, new JsonSerializerOptions

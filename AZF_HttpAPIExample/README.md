@@ -160,8 +160,8 @@ Invoke-RestMethod -Uri "http://localhost:7071/api/speedy-orders" -Method Post -B
 **Key Concepts:**
 - External supplier integration with email-based customer lookup
 - Data transformation using extension methods
-- API enrichment (customer ID lookup from email)
-- HttpResponseData for response control
+- API enrichment (customer ID and product ID lookups from email/GUID)
+- HttpResponseData for fine-grained response control
 
 **Example (PowerShell):**
 ```powershell
@@ -171,7 +171,7 @@ $body = @{
     items = @(@{ productCode = "550e8400-e29b-41d4-a716-446655440000"; quantityOrdered = 2; pricePerUnit = 29.99 })
 } | ConvertTo-Json
 
-Invoke-RestMethod -Uri "http://localhost:7071/api/vault-orders" -Method Post -Body $body -ContentType "application/json"
+Invoke-RestMethod -Uri "http://localhost:7071/api/vault-orders" -Method Post -Body $body -ContentType="application/json"
 ```
 
 ## 💡 Extension Ideas

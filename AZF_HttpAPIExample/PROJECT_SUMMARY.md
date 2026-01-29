@@ -125,7 +125,7 @@ This project provides an example of Azure Functions with HTTP triggers that comm
 - **Demonstrates**:
   - External supplier integration with email-based lookup
   - Data transformation using extension methods
-  - API enrichment (customer ID lookup from email)
+  - API enrichment (customer ID and product ID lookups from email/GUID)
   - HttpResponseData for fine-grained response control
 
 ---

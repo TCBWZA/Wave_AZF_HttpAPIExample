@@ -222,7 +222,7 @@ Invoke-RestMethod -Uri "http://localhost:7071/api/speedy-orders" -Method Post -B
 
 # POST Vault Order
 $body = @{ customerEmail = "customer@vault.com"; placedAt = 1700000000; items = @(@{ productCode = "550e8400-e29b-41d4-a716-446655440000"; quantityOrdered = 2; pricePerUnit = 29.99 }) } | ConvertTo-Json
-Invoke-RestMethod -Uri "http://localhost:7071/api/vault-orders" -Method Post -Body $body -ContentType "application/json"
+Invoke-RestMethod -Uri "http://localhost:7071/api/vault-orders" -Method Post -Body $body -ContentType="application/json"
 ```
 
 ---
@@ -301,6 +301,7 @@ var createOrder = speedyOrder.ToCreateOrderDto(supplierName);
 5. ❌ Missing Content-Type → Specify "application/json"
 6. ❌ **Hardcoding supplier IDs** → Use configuration or lookups
 7. ❌ **Not using extension methods** → Keep mapping logic centralized
+8. ❌ **Forgetting product ID lookups** → Always resolve external identifiers
 
 ---
 
