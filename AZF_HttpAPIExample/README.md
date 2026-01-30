@@ -2,7 +2,7 @@
 
 This project demonstrates how to create Azure Functions that interact with external REST APIs. It's designed as a teaching example for students learning about serverless computing and API integration.
 
-## 📚 What You'll Learn
+## 📚 What You Should Learn
 
 1. **Azure Functions Basics**
    - How to create HTTP-triggered functions
