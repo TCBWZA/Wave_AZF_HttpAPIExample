@@ -27,4 +27,8 @@
     <Using Include="NUnit.Framework" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\AZF_HttpAPIExample\AZF_HttpAPIExample.csproj" />
+  </ItemGroup>
+
 </Project>

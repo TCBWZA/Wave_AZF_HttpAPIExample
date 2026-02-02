@@ -48,14 +48,11 @@ builder.Services
 /*
  * BEST PRACTICE: Configure HttpClient with IHttpClientFactory
  * 
- * Instead of using a static HttpClient (as shown in the simple example),
- * production code should use IHttpClientFactory to:
- * - Avoid socket exhaustion
- * - Enable proper DNS refresh
- * - Support named/typed clients
- * - Allow for configuration and policies (retry, timeout, etc.)
+ * This project registers a named HttpClient that OrdersFunction resolves
+ * from IHttpClientFactory so it can reuse handlers, apply timeouts, and
+ * stay production-ready without managing socket lifetimes manually.
  * 
- * This example reads the API base URL from configuration:
+ * The base URL still comes from configuration:
  * - Local: local.settings.json -> "Values": { "ApiBaseUrl": "http://localhost:7122/api" }
  * - Azure: Configuration > Application Settings > ApiBaseUrl
  */

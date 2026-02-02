@@ -3,12 +3,14 @@ using NeoWarewholesale.API.DTOs.External;
 using NeoWarewholesale.API.Mappings;
 using NeoWarewholesale.API.DTOs;
 using NeoWarewholesale.API.Models;
+using AZF_HttpAPIExample.Models;
+using AZF_HttpAPIExample.Extensions;
 using System;
 using System.Collections.Generic;
 
 namespace AZF_HttpAPIExample.Tests
 {
-    public class Tests
+    public class OrderMappingTests
     {
         [SetUp]
         public void Setup()
@@ -37,17 +39,17 @@ namespace AZF_HttpAPIExample.Tests
 
             var dto = order.ToDto();
 
-            Assert.AreEqual(order.Id, dto.Id);
-            Assert.AreEqual(order.CustomerId, dto.CustomerId);
-            Assert.AreEqual(order.SupplierId, dto.SupplierId);
-            Assert.AreEqual("Acme", dto.SupplierName);
-            Assert.AreEqual(order.OrderDate, dto.OrderDate);
-            Assert.AreEqual(order.CustomerEmail, dto.CustomerEmail);
-            Assert.IsNotNull(dto.BillingAddress);
-            Assert.IsNotNull(dto.DeliveryAddress);
-            Assert.AreEqual(order.OrderStatus, dto.OrderStatus);
-            Assert.AreEqual(1, dto.OrderItems?.Count);
-            Assert.AreEqual(11.0m, dto.TotalAmount);
+            Assert.That(dto.Id, Is.EqualTo(order.Id));
+            Assert.That(dto.CustomerId, Is.EqualTo(order.CustomerId));
+            Assert.That(dto.SupplierId, Is.EqualTo(order.SupplierId));
+            Assert.That(dto.SupplierName, Is.EqualTo("Acme"));
+            Assert.That(dto.OrderDate, Is.EqualTo(order.OrderDate));
+            Assert.That(dto.CustomerEmail, Is.EqualTo(order.CustomerEmail));
+            Assert.That(dto.BillingAddress, Is.Not.Null);
+            Assert.That(dto.DeliveryAddress, Is.Not.Null);
+            Assert.That(dto.OrderStatus, Is.EqualTo(order.OrderStatus));
+            Assert.That(dto.OrderItems?.Count, Is.EqualTo(1));
+            Assert.That(dto.TotalAmount, Is.EqualTo(11.0m));
         }
 
         [Test]
@@ -68,17 +70,24 @@ namespace AZF_HttpAPIExample.Tests
                 }
             };
 
-            // Call static converter with a sample customer id
-            var result = AZF_HttpAPIExample.VaultFunction.ConvertVaultdto(vault, 99).Result;
+            // Convert Vault DTO to internal CreateOrderDto using extension method
+            // Simulate product id resolution by providing CreateOrderItemDto instances
+            var createOrderItems = new List<CreateOrderItemDto>
+            {
+                new CreateOrderItemDto { ProductId = 1, Quantity = vault.Items[0].QuantityOrdered, Price = vault.Items[0].PricePerUnit }
+            };
 
-            Assert.IsNotNull(result);
-            Assert.AreEqual(99, result.CustomerId);
-            Assert.AreEqual(1, result.SupplierId);
-            Assert.IsNotNull(result.BillingAddress);
-            Assert.IsNotNull(result.DeliveryAddress);
-            Assert.AreEqual(1, result.OrderItems.Count);
-            Assert.AreEqual(3, result.OrderItems[0].Quantity);
-            Assert.AreEqual(2.5m, result.OrderItems[0].Price);
+            var result = vault.ToCreateOrderDto(99, createOrderItems);
+
+            Assert.That(result, Is.Not.Null);
+            Assert.That(result.CustomerId, Is.EqualTo(99));
+            // Vault mapping sets SupplierId = 2 in the extensions
+            Assert.That(result.SupplierId, Is.EqualTo(2));
+            Assert.That(result.BillingAddress, Is.Not.Null);
+            Assert.That(result.DeliveryAddress, Is.Not.Null);
+            Assert.That(result.OrderItems.Count, Is.EqualTo(1));
+            Assert.That(result.OrderItems[0].Quantity, Is.EqualTo(3));
+            Assert.That(result.OrderItems[0].Price, Is.EqualTo(2.5m));
         }
     }
 }

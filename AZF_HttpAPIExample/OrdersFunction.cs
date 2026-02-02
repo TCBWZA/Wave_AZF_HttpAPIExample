@@ -1,3 +1,5 @@
+using System;
+using System.Net.Http;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -42,9 +44,8 @@ using NeoWarewholesale.API.Validators;
  * 
  * HTTPCLIENT BEST PRACTICES:
  * - NEVER create a new HttpClient for each request (causes socket exhaustion)
- * - Use IHttpClientFactory or static HttpClient
- * - In this example, we use a static HttpClient for simplicity
- * - In production, use dependency injection with IHttpClientFactory
+ * - Prefer IHttpClientFactory so you can configure policies and reuse handlers
+ * - This function resolves HttpClient from IHttpClientFactory in Program.cs
  * 
  * CONFIGURATION:
  * - IConfiguration reads settings from local.settings.json (local) or Azure App Settings (deployed)
@@ -58,25 +59,21 @@ namespace AZF_HttpAPIExample;
 public class OrdersFunction
 {
     private readonly ILogger<OrdersFunction> _logger;
-    private readonly IConfiguration _configuration;
-    
-    // Static HttpClient - shared across all function invocations
-    // In production, use IHttpClientFactory via dependency injection
-    private static readonly HttpClient _httpClient = new HttpClient();
+    private readonly HttpClient _httpClient;
     
     // Base URL of the API we're calling - now read from configuration
     // Configured in local.settings.json (local) or Azure App Settings (deployed)
     private readonly string _apiBaseUrl;
 
-    public OrdersFunction(ILogger<OrdersFunction> logger, IConfiguration configuration)
+    public OrdersFunction(
+        ILogger<OrdersFunction> logger,
+        IConfiguration configuration,
+        IHttpClientFactory httpClientFactory)
     {
         _logger = logger;
-        _configuration = configuration;
-        
-        // Read API base URL from configuration
-        // In local.settings.json, this is under "Values": { "ApiBaseUrl": "https://..." }
-        // In Azure Portal, this is in Configuration > Application Settings
-        _apiBaseUrl = _configuration["ApiBaseUrl"] ?? "http://localhost:5143/api";
+        _apiBaseUrl = configuration["ApiBaseUrl"] ?? "http://localhost:5143/api";
+        _httpClient = httpClientFactory?.CreateClient("OrdersAPI")
+            ?? throw new ArgumentNullException(nameof(httpClientFactory));
         
         _logger.LogInformation($"API Base URL configured as: {_apiBaseUrl}");
     }
@@ -119,7 +116,7 @@ public class OrdersFunction
      * This method demonstrates how to call the API to get customer information
      * Used for enriching order data with customer IDs from email addresses
      */
-    private async Task<long?> GetCustomerIdAsync(string email)
+    internal async Task<long?> GetCustomerIdAsync(string email)
     {
         try
         {
@@ -149,7 +146,7 @@ public class OrdersFunction
      * This method demonstrates how to call the API to get product information
      * Used for enriching order data with product IDs from product codes
      */
-    private async Task<long?> GetProductIdAsync(Guid productCode)
+    internal async Task<long?> GetProductIdAsync(Guid productCode)
     {
         try
         {
@@ -196,59 +193,59 @@ public class OrdersFunction
      * - JsonSerializer.Deserialize<T>() converts JSON string to C# objects
      * - OkObjectResult automatically serializes C# objects back to JSON for response
      */
-    //[Function("GetAllOrders")]
-    //public async Task<IActionResult> GetAllOrders(
-    //    [HttpTrigger(AuthorizationLevel.Function, "get", Route = "orders")] HttpRequest req)
-    //{
-    //    _logger.LogInformation("GetAllOrders function triggered.");
+    [Function("GetAllOrders")]
+    public async Task<IActionResult> GetAllOrders(
+        [HttpTrigger(AuthorizationLevel.Function, "get", Route = "orders")] HttpRequest req)
+    {
+        _logger.LogInformation("GetAllOrders function triggered.");
 
-    //    try
-    //    {
-    //        // STEP 1: Build the API URL
-    //        // Read from configuration instead of hardcoded constant
-    //        string apiUrl = $"{_apiBaseUrl}/orders";
-            
-    //        _logger.LogInformation($"Calling external API: {apiUrl}");
+        try
+        {
+            // STEP 1: Build the API URL
+            // Read from configuration instead of hardcoded constant
+            string apiUrl = $"{_apiBaseUrl}/orders";
 
-    //        // STEP 2: Make HTTP GET request to the external API
-    //        // GetStringAsync sends a GET request and returns the response body as a string
-    //        string jsonResponse = await _httpClient.GetStringAsync(apiUrl);
-            
-    //        // STEP 3: Deserialize JSON string into C# objects
-    //        // JsonSerializer.Deserialize converts JSON text into strongly-typed objects
-    //        // JsonSerializerOptions configures how to handle JSON (e.g., case sensitivity)
-    //        var orders = JsonSerializer.Deserialize<List<OrderDto>>(jsonResponse, new JsonSerializerOptions
-    //        {
-    //            PropertyNameCaseInsensitive = true // Allows matching "orderId" with "OrderId"
-    //        });
+            _logger.LogInformation($"Calling external API: {apiUrl}");
 
-    //        // STEP 4: Log success
-    //        _logger.LogInformation($"Successfully retrieved {orders?.Count ?? 0} orders.");
+            // STEP 2: Make HTTP GET request to the external API
+            // GetStringAsync sends a GET request and returns the response body as a string
+            string jsonResponse = await _httpClient.GetStringAsync(apiUrl);
 
-    //        // STEP 5: Return the data
-    //        // OkObjectResult returns HTTP 200 (OK) with the data
-    //        // Azure Functions automatically serializes the orders list to JSON
-    //        return new OkObjectResult(orders);
-    //    }
-    //    catch (HttpRequestException ex)
-    //    {
-    //        // HTTP-specific errors (network issues, API not responding, etc.)
-    //        _logger.LogError($"Error calling external API: {ex.Message}");
-    //        return new StatusCodeResult(StatusCodes.Status503ServiceUnavailable);
-    //    }
-    //    catch (JsonException ex)
-    //    {
-    //        // JSON parsing errors (invalid JSON format, type mismatch, etc.)
-    //        _logger.LogError($"Error deserializing JSON response: {ex.Message}");
-    //        return new StatusCodeResult(StatusCodes.Status500InternalServerError);
-    //    }
-    //    catch (Exception ex)
-    //    {
-    //        // Catch-all for any other unexpected errors
-    //        _logger.LogError($"Unexpected error: {ex.Message}");
-    //        return new StatusCodeResult(StatusCodes.Status500InternalServerError);
-    //    }
-    //}
+            // STEP 3: Deserialize JSON string into C# objects
+            // JsonSerializer.Deserialize converts JSON text into strongly-typed objects
+            // JsonSerializerOptions configures how to handle JSON (e.g., case sensitivity)
+            var orders = JsonSerializer.Deserialize<List<OrderDto>>(jsonResponse, new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true // Allows matching "orderId" with "OrderId"
+            });
+
+            // STEP 4: Log success
+            _logger.LogInformation($"Successfully retrieved {orders?.Count ?? 0} orders.");
+
+            // STEP 5: Return the data
+            // OkObjectResult returns HTTP 200 (OK) with the data
+            // Azure Functions automatically serializes the orders list to JSON
+            return new OkObjectResult(orders);
+        }
+        catch (HttpRequestException ex)
+        {
+            // HTTP-specific errors (network issues, API not responding, etc.)
+            _logger.LogError($"Error calling external API: {ex.Message}");
+            return new StatusCodeResult(StatusCodes.Status503ServiceUnavailable);
+        }
+        catch (JsonException ex)
+        {
+            // JSON parsing errors (invalid JSON format, type mismatch, etc.)
+            _logger.LogError($"Error deserializing JSON response: {ex.Message}");
+            return new StatusCodeResult(StatusCodes.Status500InternalServerError);
+        }
+        catch (Exception ex)
+        {
+            // Catch-all for any other unexpected errors
+            _logger.LogError($"Unexpected error: {ex.Message}");
+            return new StatusCodeResult(StatusCodes.Status500InternalServerError);
+        }
+    }
 
     /*
      * ========================================================================
@@ -273,67 +270,67 @@ public class OrdersFunction
      * - Azure Functions automatically extracts it from the URL
      * - The parameter name must match the route template
      */
-    //[Function("GetOrderById")]
-    //public async Task<IActionResult> GetOrderById(
-    //    [HttpTrigger(AuthorizationLevel.Function, "get", Route = "orders/{id}")] HttpRequest req,
-    //    long id) // Route parameter - automatically populated from URL
-    //{
-    //    _logger.LogInformation($"GetOrderById function triggered for Order ID: {id}");
+    [Function("GetOrderById")]
+    public async Task<IActionResult> GetOrderById(
+        [HttpTrigger(AuthorizationLevel.Function, "get", Route = "orders/{id}")] HttpRequest req,
+        long id) // Route parameter - automatically populated from URL
+    {
+        _logger.LogInformation($"GetOrderById function triggered for Order ID: {id}");
 
-    //    try
-    //    {
-    //        // STEP 1: Build the API URL with the order ID
-    //        string apiUrl = $"{_apiBaseUrl}/orders/{id}";
-            
-    //        _logger.LogInformation($"Calling external API: {apiUrl}");
+        try
+        {
+            // STEP 1: Build the API URL with the order ID
+            string apiUrl = $"{_apiBaseUrl}/orders/{id}";
 
-    //        // STEP 2: Make HTTP GET request to the external API
-    //        HttpResponseMessage response = await _httpClient.GetAsync(apiUrl);
+            _logger.LogInformation($"Calling external API: {apiUrl}");
 
-    //        // STEP 3: Check if the API request was successful
-    //        if (!response.IsSuccessStatusCode)
-    //        {
-    //            // If the API returns 404, the order doesn't exist
-    //            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
-    //            {
-    //                _logger.LogWarning($"Order with ID {id} not found.");
-    //                return new NotFoundObjectResult(new { message = $"Order with ID {id} not found." });
-    //            }
+            // STEP 2: Make HTTP GET request to the external API
+            HttpResponseMessage response = await _httpClient.GetAsync(apiUrl);
 
-    //            // For other error status codes, log and return appropriate error
-    //            _logger.LogError($"API returned error: {response.StatusCode}");
-    //            return new StatusCodeResult((int)response.StatusCode);
-    //        }
+            // STEP 3: Check if the API request was successful
+            if (!response.IsSuccessStatusCode)
+            {
+                // If the API returns 404, the order doesn't exist
+                if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                {
+                    _logger.LogWarning($"Order with ID {id} not found.");
+                    return new NotFoundObjectResult(new { message = $"Order with ID {id} not found." });
+                }
 
-    //        // STEP 4: Read the response content as a string
-    //        string jsonResponse = await response.Content.ReadAsStringAsync();
+                // For other error status codes, log and return appropriate error
+                _logger.LogError($"API returned error: {response.StatusCode}");
+                return new StatusCodeResult((int)response.StatusCode);
+            }
 
-    //        // STEP 5: Deserialize JSON into a single OrderDto object
-    //        var order = JsonSerializer.Deserialize<OrderDto>(jsonResponse, new JsonSerializerOptions
-    //        {
-    //            PropertyNameCaseInsensitive = true
-    //        });
+            // STEP 4: Read the response content as a string
+            string jsonResponse = await response.Content.ReadAsStringAsync();
 
-    //        // STEP 6: Log success and return the order
-    //        _logger.LogInformation($"Successfully retrieved order {id}.");
-    //        return new OkObjectResult(order);
-    //    }
-    //    catch (HttpRequestException ex)
-    //    {
-    //        _logger.LogError($"Error calling external API: {ex.Message}");
-    //        return new StatusCodeResult(StatusCodes.Status503ServiceUnavailable);
-    //    }
-    //    catch (JsonException ex)
-    //    {
-    //        _logger.LogError($"Error deserializing JSON response: {ex.Message}");
-    //        return new StatusCodeResult(StatusCodes.Status500InternalServerError);
-    //    }
-    //    catch (Exception ex)
-    //    {
-    //        _logger.LogError($"Unexpected error: {ex.Message}");
-    //        return new StatusCodeResult(StatusCodes.Status500InternalServerError);
-    //    }
-    //}
+            // STEP 5: Deserialize JSON into a single OrderDto object
+            var order = JsonSerializer.Deserialize<OrderDto>(jsonResponse, new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            });
+
+            // STEP 6: Log success and return the order
+            _logger.LogInformation($"Successfully retrieved order {id}.");
+            return new OkObjectResult(order);
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogError($"Error calling external API: {ex.Message}");
+            return new StatusCodeResult(StatusCodes.Status503ServiceUnavailable);
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogError($"Error deserializing JSON response: {ex.Message}");
+            return new StatusCodeResult(StatusCodes.Status500InternalServerError);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError($"Unexpected error: {ex.Message}");
+            return new StatusCodeResult(StatusCodes.Status500InternalServerError);
+        }
+    }
 
     /*
      * ========================================================================
@@ -374,94 +371,94 @@ public class OrdersFunction
      *   ]
      * }
      */
-    //[Function("CreateOrder")]
-    //public async Task<IActionResult> CreateOrder(
-    //    [HttpTrigger(AuthorizationLevel.Function, "post", Route = "orders")] HttpRequest req)
-    //{
-    //    _logger.LogInformation("CreateOrder function triggered.");
-    //    try
-    //    {
-    //        // STEP 1: Read and deserialize the request body
-    //        // ReadFromJsonAsync automatically deserializes JSON from request body
-    //        var newOrder = await req.ReadFromJsonAsync<CreateOrderDto>();
+    [Function("CreateOrder")]
+    public async Task<IActionResult> CreateOrder(
+        [HttpTrigger(AuthorizationLevel.Function, "post", Route = "orders")] HttpRequest req)
+    {
+        _logger.LogInformation("CreateOrder function triggered.");
+        try
+        {
+            // STEP 1: Read and deserialize the request body
+            // ReadFromJsonAsync automatically deserializes JSON from request body
+            var newOrder = await req.ReadFromJsonAsync<CreateOrderDto>();
 
-    //        // STEP 2: Validate the input
-    //        if (newOrder == null)
-    //        {
-    //            _logger.LogWarning("Request body is empty or invalid.");
-    //            return new BadRequestObjectResult(new { message = "Request body is required." });
-    //        }
+            // STEP 2: Validate the input
+            if (newOrder == null)
+            {
+                _logger.LogWarning("Request body is empty or invalid.");
+                return new BadRequestObjectResult(new { message = "Request body is required." });
+            }
 
-    //        // Additional validation - check required fields
-    //        if (newOrder.SupplierId <= 0)
-    //        {
-    //            return new BadRequestObjectResult(new { message = "Invalid SupplierId." });
-    //        }
+            // Additional validation - check required fields
+            if (newOrder.SupplierId <= 0)
+            {
+                return new BadRequestObjectResult(new { message = "Invalid SupplierId." });
+            }
 
-    //        if (newOrder.OrderItems == null || newOrder.OrderItems.Count == 0)
-    //        {
-    //            return new BadRequestObjectResult(new { message = "Order must contain at least one item." });
-    //        }
+            if (newOrder.OrderItems == null || newOrder.OrderItems.Count == 0)
+            {
+                return new BadRequestObjectResult(new { message = "Order must contain at least one item." });
+            }
 
-    //        // STEP 3: Serialize the object to JSON for sending to API
-    //        string jsonContent = JsonSerializer.Serialize(newOrder, new JsonSerializerOptions
-    //        {
-    //            PropertyNamingPolicy = JsonNamingPolicy.CamelCase, // Converts to camelCase for JSON
-    //            WriteIndented = false // Compact JSON (no extra whitespace)
-    //        });
+            // STEP 3: Serialize the object to JSON for sending to API
+            string jsonContent = JsonSerializer.Serialize(newOrder, new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase, // Converts to camelCase for JSON
+                WriteIndented = false // Compact JSON (no extra whitespace)
+            });
 
-    //        _logger.LogInformation($"Sending order to API: {jsonContent}");
+            _logger.LogInformation($"Sending order to API: {jsonContent}");
 
-    //        // STEP 4: Create HTTP content with JSON
-    //        var httpContent = new StringContent(
-    //            jsonContent,
-    //            System.Text.Encoding.UTF8,
-    //            "application/json"); // Content-Type header
+            // STEP 4: Create HTTP content with JSON
+            var httpContent = new StringContent(
+                jsonContent,
+                System.Text.Encoding.UTF8,
+                "application/json"); // Content-Type header
 
-    //        // STEP 5: Send POST request to external API
-    //        string apiUrl = $"{_apiBaseUrl}/orders";
-    //        HttpResponseMessage response = await _httpClient.PostAsync(apiUrl, httpContent);
+            // STEP 5: Send POST request to external API
+            string apiUrl = $"{_apiBaseUrl}/orders";
+            HttpResponseMessage response = await _httpClient.PostAsync(apiUrl, httpContent);
 
-    //        // STEP 6: Check if the API request was successful
-    //        if (!response.IsSuccessStatusCode)
-    //        {
-    //            _logger.LogError($"API returned error: {response.StatusCode}");
-    //            string errorContent = await response.Content.ReadAsStringAsync();
-    //            return new ObjectResult(new { message = "Failed to create order.", details = errorContent })
-    //            {
-    //                StatusCode = (int)response.StatusCode
-    //            };
-    //        }
+            // STEP 6: Check if the API request was successful
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogError($"API returned error: {response.StatusCode}");
+                string errorContent = await response.Content.ReadAsStringAsync();
+                return new ObjectResult(new { message = "Failed to create order.", details = errorContent })
+                {
+                    StatusCode = (int)response.StatusCode
+                };
+            }
 
-    //        // STEP 7: Read the created order from response
-    //        string responseJson = await response.Content.ReadAsStringAsync();
-    //        var createdOrder = JsonSerializer.Deserialize<OrderDto>(responseJson, new JsonSerializerOptions
-    //        {
-    //            PropertyNameCaseInsensitive = true
-    //        });
+            // STEP 7: Read the created order from response
+            string responseJson = await response.Content.ReadAsStringAsync();
+            var createdOrder = JsonSerializer.Deserialize<OrderDto>(responseJson, new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            });
 
-    //        // STEP 8: Return 201 Created with the new order
-    //        _logger.LogInformation($"Successfully created order with ID: {createdOrder?.Id}");
-            
-    //        // CreatedResult returns HTTP 201 with Location header pointing to the new resource
-    //        return new CreatedResult($"/api/orders/{createdOrder?.Id}", createdOrder);
-    //    }
-    //    catch (JsonException ex)
-    //    {
-    //        _logger.LogError($"Error with JSON processing: {ex.Message}");
-    //        return new BadRequestObjectResult(new { message = "Invalid JSON format.", error = ex.Message });
-    //    }
-    //    catch (HttpRequestException ex)
-    //    {
-    //        _logger.LogError($"Error calling external API: {ex.Message}");
-    //        return new StatusCodeResult(StatusCodes.Status503ServiceUnavailable);
-    //    }
-    //    catch (Exception ex)
-    //    {
-    //        _logger.LogError($"Unexpected error: {ex.Message}");
-    //        return new StatusCodeResult(StatusCodes.Status500InternalServerError);
-    //    }
-    //}
+            // STEP 8: Return 201 Created with the new order
+            _logger.LogInformation($"Successfully created order with ID: {createdOrder?.Id}");
+
+            // CreatedResult returns HTTP 201 with Location header pointing to the new resource
+            return new CreatedResult($"/api/orders/{createdOrder?.Id}", createdOrder);
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogError($"Error with JSON processing: {ex.Message}");
+            return new BadRequestObjectResult(new { message = "Invalid JSON format.", error = ex.Message });
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogError($"Error calling external API: {ex.Message}");
+            return new StatusCodeResult(StatusCodes.Status503ServiceUnavailable);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError($"Unexpected error: {ex.Message}");
+            return new StatusCodeResult(StatusCodes.Status500InternalServerError);
+        }
+    }
 
     /*
      * ========================================================================
