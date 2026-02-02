@@ -1,4 +1,7 @@
 <Solution>
+  <Folder Name="/Solution Items/">
+    <File Path="README.md" />
+  </Folder>
   <Project Path="AZF_HttpAPIExample.Tests/AZF_HttpAPIExample.Tests.csproj" />
   <Project Path="AZF_HttpAPIExample/AZF_HttpAPIExample.csproj" />
 </Solution>
